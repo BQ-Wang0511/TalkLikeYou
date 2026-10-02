@@ -17,6 +17,13 @@ TalkLikeYou imitates a target person's speaking habits for real-time audio-drive
   <img src="assets/teaser.png" alt="TalkLikeYou overview" width="100%">
 </p>
 
+## To do List
+
+- [x] Release Inference Code
+- [x] Release Checkpoint
+- [ ] Release Streaming RealTime Demo
+- [ ] PLAD Evaluation
+
 ## Installation
 
 The recommended environment is Linux, Python 3.10, CUDA 12.1, cuDNN 9, and an NVIDIA GPU with at least 12 GB of memory. FFmpeg must be available on `PATH`.

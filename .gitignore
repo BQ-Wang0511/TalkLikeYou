@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+*.so
+.ruff_cache/
+/checkpoints/
+/pretrained_weights/
+/.cache/
+.idea/
+.vscode/
+build/
+dist/
+outputs/*
+!outputs/.gitkeep
+*.tmp.mp4
+*.log

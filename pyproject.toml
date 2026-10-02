@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "talklikeyou"
+version = "1.0.0"
+description = "Habit-aware real-time talking head generation"
+readme = "README.md"
+requires-python = ">=3.10,<3.12"
+license = {text = "MIT"}
+authors = [
+  {name = "Baiqin Wang"},
+  {name = "Zhixing Ding"},
+  {name = "Jijie Li"},
+  {name = "Jiankuo Zhao"},
+  {name = "Zhen Lei"},
+  {name = "Xiangyu Zhu"},
+]
+
+[project.scripts]
+talklikeyou = "talklikeyou.pipeline:main"
+
+[tool.setuptools.packages.find]
+include = ["talklikeyou*", "src*"]
+
+[tool.setuptools.package-data]
+"talklikeyou.ditto.core.utils.blend" = ["*.pyx", "*.pyxbld", "*.c", "*.h"]
+"src.utils" = ["resources/*"]
+"src.config" = ["*.yaml"]

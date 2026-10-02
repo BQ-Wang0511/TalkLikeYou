@@ -1,0 +1,17 @@
+torch>=2.3,<2.6
+numpy==2.0.1
+librosa==0.10.2.post1
+scipy>=1.14,<2
+tqdm>=4.66
+einops>=0.8
+opencv-python-headless>=4.10
+imageio>=2.36
+imageio-ffmpeg>=0.5
+filetype>=1.2
+scikit-image>=0.24
+onnx>=1.16
+onnxruntime-gpu>=1.20,<2
+mediapipe>=0.10.20
+cython>=3.0
+pyyaml>=6.0
+rich>=13.0

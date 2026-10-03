@@ -59,10 +59,12 @@ class Cropper(object):
                     device = "cuda"
                     face_analysis_wrapper_provider = ["CUDAExecutionProvider"]
         self.face_analysis_wrapper = FaceAnalysisDIY(
-                    name="buffalo_l",
-                    root=self.crop_cfg.insightface_root,
-                    providers=face_analysis_wrapper_provider,
-                )
+            model_paths=[
+                self.crop_cfg.detector_ckpt_path,
+                self.crop_cfg.landmark106_ckpt_path,
+            ],
+            providers=face_analysis_wrapper_provider,
+        )
         self.face_analysis_wrapper.prepare(ctx_id=device_id, det_size=(512, 512), det_thresh=self.crop_cfg.det_thresh)
         self.face_analysis_wrapper.warmup()
 

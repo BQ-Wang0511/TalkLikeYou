@@ -44,10 +44,10 @@ pip install -r requirements.txt
 Download the inference weights from [Hugging Face](https://huggingface.co/doubi-killer/TalkLikeYou) into the repository root:
 
 ```bash
-hf download doubi-killer/TalkLikeYou --include "checkpoints/**" "pretrained_weights/**" --local-dir .
+hf download doubi-killer/TalkLikeYou --include "checkpoints/**" --local-dir .
 ```
 
-The downloaded files must retain their `checkpoints/` and `pretrained_weights/` paths. These directories are excluded from the code repository. Some third-party weights are restricted to research or non-commercial use; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+The downloaded files must retain their `checkpoints/` paths. This directory is excluded from the code repository. Some third-party weights are restricted to research or non-commercial use; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Inference
 

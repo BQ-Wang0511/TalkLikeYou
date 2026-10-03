@@ -32,8 +32,6 @@ class DenseMotionNetwork(nn.Module):
         identity_grid = identity_grid.view(1, 1, d, h, w, 3)  # (1, 1, d=16, h=64, w=64, 3)
         coordinate_grid = identity_grid - kp_driving.view(bs, self.num_kp, 1, 1, 1, 3)
 
-        k = coordinate_grid.shape[1]
-
         # NOTE: there lacks an one-order flow
         driving_to_source = coordinate_grid + kp_source.view(bs, self.num_kp, 1, 1, 1, 3)    # (bs, num_kp, d, h, w, 3)
 

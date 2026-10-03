@@ -25,11 +25,18 @@ class FaceAnalysis:
     def __init__(self, name=DEFAULT_MP_NAME, root='~/.insightface', allowed_modules=None, **kwargs):
         onnxruntime.set_default_logger_severity(3)
         self.models = {}
-        self.model_dir = osp.join(osp.expanduser(root), 'models', name)
-        if not osp.isdir(self.model_dir):
-            raise FileNotFoundError(f"Face model directory not found: {self.model_dir}")
-        onnx_files = glob.glob(osp.join(self.model_dir, '*.onnx'))
-        onnx_files = sorted(onnx_files)
+        model_paths = kwargs.pop("model_paths", None)
+        if model_paths is None:
+            self.model_dir = osp.join(osp.expanduser(root), 'models', name)
+            if not osp.isdir(self.model_dir):
+                raise FileNotFoundError(f"Face model directory not found: {self.model_dir}")
+            onnx_files = sorted(glob.glob(osp.join(self.model_dir, '*.onnx')))
+        else:
+            self.model_dir = None
+            onnx_files = [osp.abspath(path) for path in model_paths]
+            missing = [path for path in onnx_files if not osp.isfile(path)]
+            if missing:
+                raise FileNotFoundError(f"Face model not found: {missing[0]}")
         for onnx_file in onnx_files:
             model = model_zoo.get_model(onnx_file, **kwargs)
             if model is None:

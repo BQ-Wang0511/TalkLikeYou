@@ -244,7 +244,7 @@ class StreamSDK:
                 return self.ctrl_info[fid]
             else:
                 return {}
-        except Exception as e:
+        except Exception:
             traceback.print_exc()
             return {}
 

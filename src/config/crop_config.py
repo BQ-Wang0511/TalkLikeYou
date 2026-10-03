@@ -11,8 +11,15 @@ from .base_config import PrintableConfig, make_abs_path
 
 @dataclass(repr=False)  # use repr from PrintableConfig
 class CropConfig(PrintableConfig):
-    insightface_root: str = make_abs_path("../../pretrained_weights/insightface")
-    landmark_ckpt_path: str = make_abs_path("../../pretrained_weights/liveportrait/landmark.onnx")
+    detector_ckpt_path: str = make_abs_path(
+        "../../checkpoints/ditto/ditto_pytorch/aux_models/det_10g.onnx"
+    )
+    landmark106_ckpt_path: str = make_abs_path(
+        "../../checkpoints/ditto/ditto_pytorch/aux_models/2d106det.onnx"
+    )
+    landmark_ckpt_path: str = make_abs_path(
+        "../../checkpoints/ditto/ditto_pytorch/aux_models/landmark203.onnx"
+    )
     device_id: int = 0
     flag_force_cpu: bool = False
     det_thresh: float = 0.1

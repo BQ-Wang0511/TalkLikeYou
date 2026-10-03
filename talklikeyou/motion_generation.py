@@ -38,32 +38,26 @@ class MotionGenerationEngine:
         self.device = device
         state = torch.load(str(motion_checkpoint), map_location="cpu", weights_only=True)
         config = dict(state["config"])
-        config["sampling_timesteps"] = sampling_steps
-        config["guidance_weight"] = guidance_scale
+        config["sampling_steps"] = sampling_steps
+        config["guidance_scale"] = guidance_scale
         self.config = config
 
         self.motion_generator = FlowMatchingMotionGenerator(
             motion_feat_dim=config["motion_feat_dim"],
             person_num=config["person_num"],
             audio_feat_dim=config["audio_feat_dim"],
-            seq_frames=config["T"],
+            seq_frames=config["sequence_length"],
             latent_dim=config["latent_dim"],
-            ff_size=config["ff_size"],
-            num_layers=config["num_layers"],
-            num_heads=config["num_heads"],
-            dropout=config["dropout"],
-            diffusion_steps=config["diffusion_steps"],
-            sampling_timesteps=config["sampling_timesteps"],
-            guidance_weight=config["guidance_weight"],
-            cond_drop_prob=config["cond_drop_prob"],
+            ff_size=config["feedforward_dim"],
+            num_layers=config["layer_count"],
+            num_heads=config["head_count"],
+            dropout=0.0,
+            time_steps=config["time_steps"],
+            sampling_steps=config["sampling_steps"],
+            guidance_scale=config["guidance_scale"],
             checkpoint=str(motion_checkpoint),
             device=str(device),
-            use_last_frame_loss=config["use_last_frame_loss"],
-            part_w_dict={"motion": (0, config["motion_feat_dim"], 1.0)},
-            flow_matching=config["flow_matching"],
-            predict_epsilon=config["predict_epsilon"],
-            flow_loss_weight=config["flow_loss_weight"],
-            flow_predict_xstart=config["flow_predict_xstart"],
+            predict_clean_motion=config["predict_clean_motion"],
         )
         self.motion_generator.eval()
         self.audio_extractor = AudioFeatureExtractor(audio_checkpoint, device)
@@ -76,7 +70,6 @@ class MotionGenerationEngine:
             motion_dim=model_state["vertice_map.weight"].shape[1],
             feature_dim=model_state["vertice_map.weight"].shape[0],
             habit_dim=model_state["vertice_map_r.weight"].shape[0],
-            person_num=model_state["cls.out_proj.weight"].shape[0],
             reference_frames=100,
         ).to(self.device)
         encoder.load_state_dict(model_state, strict=True)
@@ -95,8 +88,7 @@ class MotionGenerationEngine:
             [_expression(motion[index])[LIP_KEYPOINTS] for index in range(start, start + reference_frames)]
         )
         tensor = torch.from_numpy(values).permute(0, 2, 1).unsqueeze(0).to(self.device)
-        embedding, _ = self.habit_encoder(tensor)
-        return embedding
+        return self.habit_encoder(tensor)
 
     @torch.inference_mode()
     def generate(
@@ -119,7 +111,7 @@ class MotionGenerationEngine:
         if total_frames == 0:
             raise ValueError("No frames are available for motion generation")
 
-        sequence_length = self.config["T"]
+        sequence_length = self.config["sequence_length"]
         overlap = self.config.get("overlap", 5) if overlap is None else overlap
         overlap = min(max(overlap, 0), sequence_length - 1)
         stride = sequence_length - overlap

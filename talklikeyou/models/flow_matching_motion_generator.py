@@ -16,20 +16,12 @@ class FlowMatchingMotionGenerator:
         num_layers=4,
         num_heads=4,
         dropout=0.1,
-        diffusion_steps=1000,
-        sampling_timesteps=50,
-        guidance_weight=2.0,
-        cond_drop_prob=0.2,
+        time_steps=1000,
+        sampling_steps=1,
+        guidance_scale=1.3,
         checkpoint="",
         device="cuda",
-        use_last_frame_loss=False,
-        part_w_dict=None,
-        flow_matching=False,
-        predict_epsilon=False,
-        use_pva_loss=True,
-        pva_xstart_only=False,
-        flow_loss_weight=1.0,
-        flow_predict_xstart=False,
+        predict_clean_motion=True,
     ):
         self.motion_feat_dim = motion_feat_dim
         self.audio_feat_dim = audio_feat_dim
@@ -50,23 +42,10 @@ class FlowMatchingMotionGenerator:
         )
         flow_process = FlowMatchingProcess(
             model=model,
-            horizon=seq_frames,
-            repr_dim=motion_feat_dim,
-            n_timestep=diffusion_steps,
-            sampling_timesteps=sampling_timesteps,
-            schedule="cosine",
-            loss_type="l2",
-            clip_denoised=False,
-            predict_epsilon=predict_epsilon,
-            guidance_weight=guidance_weight,
-            cond_drop_prob=cond_drop_prob,
-            part_w_dict=part_w_dict,
-            use_last_frame_loss=use_last_frame_loss,
-            flow_matching=flow_matching,
-            use_pva_loss=use_pva_loss,
-            pva_xstart_only=pva_xstart_only,
-            flow_loss_weight=flow_loss_weight,
-            flow_predict_xstart=flow_predict_xstart,
+            time_steps=time_steps,
+            sampling_steps=sampling_steps,
+            guidance_scale=guidance_scale,
+            predict_clean_motion=predict_clean_motion,
         )
 
         if checkpoint:
@@ -76,9 +55,6 @@ class FlowMatchingMotionGenerator:
         self.model = model
         self.flow_process = flow_process.to(device)
 
-    def train(self):
-        self.flow_process.train()
-
     def eval(self):
         self.flow_process.eval()
 
@@ -86,12 +62,12 @@ class FlowMatchingMotionGenerator:
     def sample(self, kp_cond, aud_cond, habit_one_hot, noise=None, ref_habit=None, habit_emb=None):
         batch_size, seq_len, _ = aud_cond.shape
         shape = (batch_size, seq_len, self.motion_feat_dim)
-        return self.flow_process.ddim_sample(
+        return self.flow_process.sample(
             shape,
             kp_cond,
             aud_cond,
             habit_one_hot,
             noise=noise,
-            ref_habit=ref_habit,
-            habit_emb=habit_emb,
+            reference_habit=ref_habit,
+            habit_embedding=habit_emb,
         )

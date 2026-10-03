@@ -14,19 +14,19 @@ from .base_config import PrintableConfig, make_abs_path
 class InferenceConfig(PrintableConfig):
     models_config: str = make_abs_path("./models.yaml")
     checkpoint_F: str = make_abs_path(
-        "../../pretrained_weights/liveportrait/base_models/appearance_feature_extractor.pth"
+        "../../checkpoints/ditto/ditto_pytorch/models/appearance_extractor.pth"
     )
     checkpoint_M: str = make_abs_path(
-        "../../pretrained_weights/liveportrait/base_models/motion_extractor.pth"
+        "../../checkpoints/ditto/ditto_pytorch/models/motion_extractor.pth"
     )
     checkpoint_G: str = make_abs_path(
-        "../../pretrained_weights/liveportrait/base_models/spade_generator.pth"
+        "../../checkpoints/ditto/ditto_pytorch/models/decoder.pth"
     )
     checkpoint_W: str = make_abs_path(
-        "../../pretrained_weights/liveportrait/base_models/warping_module.pth"
+        "../../checkpoints/ditto/ditto_pytorch/models/warp_network.pth"
     )
     checkpoint_S: str = make_abs_path(
-        "../../pretrained_weights/liveportrait/retargeting_models/stitching_retargeting_module.pth"
+        "../../checkpoints/ditto/ditto_pytorch/models/stitch_network.pth"
     )
     flag_use_half_precision: bool = True
     device_id: int = 0

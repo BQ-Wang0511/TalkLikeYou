@@ -4,7 +4,6 @@ import math
 
 import torch
 from torch import nn
-from torch.nn import functional as F
 
 
 class CyclicPositionalEncoding(nn.Module):
@@ -20,10 +19,9 @@ class CyclicPositionalEncoding(nn.Module):
         encoding[:, 1::2] = torch.cos(position * divisor)
         repeats = max_length // period + 1
         self.register_buffer("pe", encoding.unsqueeze(0).repeat(1, repeats, 1))
-        self.dropout = nn.Dropout(0.1)
 
     def forward(self, values: torch.Tensor) -> torch.Tensor:
-        return self.dropout(values + self.pe[:, : values.shape[1]])
+        return values + self.pe[:, : values.shape[1]]
 
 
 class AttentionPooling(nn.Module):
@@ -34,24 +32,10 @@ class AttentionPooling(nn.Module):
             nn.Mish(),
             nn.Linear(feature_dim, 1),
         )
-        self.softmax = F.softmax
 
     def forward(self, sequence: torch.Tensor) -> torch.Tensor:
-        weights = self.softmax(self.W(sequence).squeeze(-1), dim=-1).unsqueeze(-1)
+        weights = torch.softmax(self.W(sequence).squeeze(-1), dim=-1).unsqueeze(-1)
         return torch.sum(sequence * weights, dim=1)
-
-
-class ClassificationHead(nn.Module):
-    def __init__(self, feature_dim: int, num_classes: int):
-        super().__init__()
-        self.dense = nn.Linear(feature_dim, feature_dim)
-        self.dropout = nn.Dropout(0.1)
-        self.out_proj = nn.Linear(feature_dim, num_classes)
-
-    def forward(self, features: torch.Tensor) -> torch.Tensor:
-        values = self.dropout(features)
-        values = torch.tanh(self.dense(values))
-        return self.out_proj(self.dropout(values))
 
 
 class HabitEncoder(nn.Module):
@@ -62,7 +46,6 @@ class HabitEncoder(nn.Module):
         motion_dim: int,
         feature_dim: int,
         habit_dim: int,
-        person_num: int,
         reference_frames: int = 100,
     ):
         super().__init__()
@@ -72,16 +55,15 @@ class HabitEncoder(nn.Module):
             d_model=feature_dim,
             nhead=4,
             dim_feedforward=2 * feature_dim,
+            dropout=0.0,
             batch_first=True,
         )
         self.transformer_encoder = nn.TransformerEncoder(layer, num_layers=2)
         self.vertice_map_r = nn.Linear(feature_dim, habit_dim)
-        self.cls = ClassificationHead(habit_dim, person_num)
         self.pooling = AttentionPooling(habit_dim)
 
-    def forward(self, motion: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, motion: torch.Tensor) -> torch.Tensor:
         motion = motion.reshape(motion.shape[0], motion.shape[1], -1)
         features = self.vertice_map(motion)
         features = self.transformer_encoder(self.PPE(features))
-        habit = self.pooling(self.vertice_map_r(features))
-        return habit, self.cls(habit)
+        return self.pooling(self.vertice_map_r(features))

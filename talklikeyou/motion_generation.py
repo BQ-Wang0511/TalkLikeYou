@@ -90,11 +90,15 @@ class MotionGenerationEngine:
         tensor = torch.from_numpy(values).permute(0, 2, 1).unsqueeze(0).to(self.device)
         return self.habit_encoder(tensor)
 
+    def extract_audio_features(self, audio_path: str | Path) -> np.ndarray:
+        return self.audio_extractor(audio_path)
+
     @torch.inference_mode()
     def generate(
         self,
         template_data: dict,
-        audio_path: str | Path,
+        audio_path: str | Path | None = None,
+        audio_features: np.ndarray | None = None,
         person_id: int = 192,
         reference_data: dict | None = None,
         motion_scale: float = 1.0,
@@ -106,7 +110,10 @@ class MotionGenerationEngine:
         if not 0 <= person_id < person_num:
             raise ValueError(f"person_id must be in [0, {person_num - 1}]")
 
-        audio_features = self.audio_extractor(audio_path)
+        if audio_features is None:
+            if audio_path is None:
+                raise ValueError("audio_path is required when audio_features is not provided")
+            audio_features = self.extract_audio_features(audio_path)
         total_frames = min(len(template_data["motion"]), len(audio_features))
         if total_frames == 0:
             raise ValueError("No frames are available for motion generation")

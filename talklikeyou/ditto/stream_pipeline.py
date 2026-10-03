@@ -17,7 +17,7 @@ from .core.atomic_components.cfg import parse_cfg, print_cfg
 
 
 class StreamSDK:
-    def __init__(self, cfg_pkl, data_root, **kwargs):
+    def __init__(self, cfg_pkl, data_root, enable_audio_motion=True, **kwargs):
 
         [
             avatar_registrar_cfg,
@@ -33,14 +33,17 @@ class StreamSDK:
         self.default_kwargs = default_kwargs
         
         self.avatar_registrar = AvatarRegistrar(**avatar_registrar_cfg)
-        self.condition_handler = ConditionHandler(**condition_handler_cfg)
-        self.audio2motion = Audio2Motion(lmdm_cfg)
+        self.enable_audio_motion = enable_audio_motion
+        self.condition_handler = (
+            ConditionHandler(**condition_handler_cfg) if enable_audio_motion else None
+        )
+        self.audio2motion = Audio2Motion(lmdm_cfg) if enable_audio_motion else None
         self.motion_stitch = MotionStitch(stitch_network_cfg)
         self.warp_f3d = WarpF3D(warp_network_cfg)
         self.decode_f3d = DecodeF3D(decoder_cfg)
         self.putback = PutBack()
 
-        self.wav2feat = Wav2Feat(**wav2feat_cfg)
+        self.wav2feat = Wav2Feat(**wav2feat_cfg) if enable_audio_motion else None
 
     def _merge_kwargs(self, default_kwargs, run_kwargs):
         for k, v in default_kwargs.items():
@@ -137,7 +140,8 @@ class StreamSDK:
         """
 
         # only hubert support online mode
-        assert self.wav2feat.support_streaming or not self.online_mode
+        if self.enable_audio_motion:
+            assert self.wav2feat.support_streaming or not self.online_mode
 
         # ======== Register Avatar ========
         crop_kwargs = {
@@ -161,20 +165,24 @@ class StreamSDK:
         self.source_info_frames = len(source_info["x_s_info_lst"])
 
         # ======== Setup Condition Handler ========
-        self.condition_handler.setup(source_info, self.emo, eye_f0_mode=self.eye_f0_mode, ch_info=self.ch_info)
-
-        # ======== Setup Audio2Motion (LMDM) ========
-        x_s_info_0 = self.condition_handler.x_s_info_0
-        self.audio2motion.setup(
-            x_s_info_0, 
-            overlap_v2=self.overlap_v2,
-            fix_kp_cond=self.fix_kp_cond,
-            fix_kp_cond_dim=self.fix_kp_cond_dim,
-            sampling_timesteps=self.sampling_timesteps,
-            online_mode=self.online_mode,
-            v_min_max_for_clip=self.v_min_max_for_clip,
-            smo_k_d=self.smo_k_d,
-        )
+        if self.enable_audio_motion:
+            self.condition_handler.setup(
+                source_info,
+                self.emo,
+                eye_f0_mode=self.eye_f0_mode,
+                ch_info=self.ch_info,
+            )
+            x_s_info_0 = self.condition_handler.x_s_info_0
+            self.audio2motion.setup(
+                x_s_info_0,
+                overlap_v2=self.overlap_v2,
+                fix_kp_cond=self.fix_kp_cond,
+                fix_kp_cond_dim=self.fix_kp_cond_dim,
+                sampling_timesteps=self.sampling_timesteps,
+                online_mode=self.online_mode,
+                v_min_max_for_clip=self.v_min_max_for_clip,
+                smo_k_d=self.smo_k_d,
+            )
 
         # ======== Setup Motion Stitch ========
         is_image_flag = source_info["is_image_flag"]
@@ -203,13 +211,15 @@ class StreamSDK:
         self.writer_pbar = tqdm(desc="writer")
 
         # ======== Audio Feat Buffer ========
-        if self.online_mode:
+        if self.enable_audio_motion and self.online_mode:
             # buffer: seq_frames - valid_clip_len
             self.audio_feat = self.wav2feat.wav2feat(np.zeros((self.overlap_v2 * 640,), dtype=np.float32), sr=16000)
             assert len(self.audio_feat) == self.overlap_v2, f"{len(self.audio_feat)}"
-        else:
+        elif self.enable_audio_motion:
             self.audio_feat = np.zeros((0, self.wav2feat.feat_dim), dtype=np.float32)
-        self.cond_idx_start = 0 - len(self.audio_feat)
+        else:
+            self.audio_feat = None
+        self.cond_idx_start = 0 if self.audio_feat is None else -len(self.audio_feat)
 
         # ======== Setup Worker Threads ========
         QUEUE_MAX_SIZE = 100
@@ -225,13 +235,14 @@ class StreamSDK:
         self.writer_queue = queue.Queue(maxsize=QUEUE_MAX_SIZE)
 
         self.thread_list = [
-            threading.Thread(target=self.audio2motion_worker),
             threading.Thread(target=self.motion_stitch_worker),
             threading.Thread(target=self.warp_f3d_worker),
             threading.Thread(target=self.decode_f3d_worker),
             threading.Thread(target=self.putback_worker),
             threading.Thread(target=self.writer_worker),
         ]
+        if self.enable_audio_motion:
+            self.thread_list.insert(0, threading.Thread(target=self.audio2motion_worker))
 
         for thread in self.thread_list:
             thread.start()
@@ -513,7 +524,8 @@ class StreamSDK:
 
     def close(self):
         # flush frames
-        self.audio2motion_queue.put(None)
+        if self.enable_audio_motion:
+            self.audio2motion_queue.put(None)
         # Wait for worker threads to finish
         for thread in self.thread_list:
             thread.join()

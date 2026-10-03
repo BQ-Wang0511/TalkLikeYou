@@ -7,7 +7,9 @@ import copy
 import gc
 import os
 import pickle
+import shutil
 import subprocess
+import time
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
@@ -34,6 +36,11 @@ from .ditto.core.atomic_components.motion_stitch import (
     transform_keypoint,
 )
 from .motion_generation import MotionGenerationEngine
+from .neutralization import (
+    NEUTRAL_LIP_EXPRESSION,
+    compute_lip_normalization,
+    neutralize_source,
+)
 from .portrait_template import create_pipeline, video_fps
 from src.utils.camera import get_rotation_matrix, headpose_pred_to_degree
 from src.utils.io import load_image_rgb, load_video, resize_to_limit
@@ -158,6 +165,51 @@ def finalize_motion_template(template_base: dict, num_frames: int, output_fps: f
     return template
 
 
+def motion_template_from_source_info(source_info: dict, output_fps: float) -> dict:
+    """Reuse renderer registration instead of running a second motion extractor."""
+    motion = []
+    for item in source_info["x_s_info_lst"]:
+        pitch = torch.from_numpy(np.asarray(item["pitch"], dtype=np.float32))
+        yaw = torch.from_numpy(np.asarray(item["yaw"], dtype=np.float32))
+        roll = torch.from_numpy(np.asarray(item["roll"], dtype=np.float32))
+        rotation = get_rotation_matrix(
+            headpose_pred_to_degree(pitch),
+            headpose_pred_to_degree(yaw),
+            headpose_pred_to_degree(roll),
+        ).cpu().numpy().astype(np.float32)
+        motion.append({
+            "scale": np.asarray(item["scale"], dtype=np.float32),
+            "R": rotation,
+            "exp": reshape_motion_points(item["exp"], "exp"),
+            "t": np.asarray(item["t"], dtype=np.float32),
+            "kp": reshape_motion_points(item["kp"], "kp"),
+            "x_s": transform_keypoint(item).astype(np.float32),
+        })
+    return {
+        "n_frames": len(motion),
+        "output_fps": float(output_fps),
+        "motion": motion,
+        "c_eyes_lst": [
+            np.asarray(value, dtype=np.float32)
+            for value in source_info["eye_open_lst"]
+        ],
+        "c_lip_lst": [np.zeros((1, 1), dtype=np.float32) for _ in motion],
+    }
+
+
+def source_motion_frames(source_info: dict, num_frames: int) -> list[dict]:
+    return extend_list_mirror(source_info["x_s_info_lst"], num_frames)
+
+
+def apply_neutral_lip_expression(template: dict) -> dict:
+    template = copy.deepcopy(template)
+    for frame in template["motion"]:
+        expression = reshape_motion_points(frame["exp"], "exp")
+        expression[0, LIP_IDX] = NEUTRAL_LIP_EXPRESSION
+        frame["exp"] = expression
+    return template
+
+
 def to_template_motion_item(motion_info: dict, template_motion: dict) -> dict:
     pitch = torch.from_numpy(np.asarray(motion_info["pitch"], dtype=np.float32))
     yaw = torch.from_numpy(np.asarray(motion_info["yaw"], dtype=np.float32))
@@ -220,13 +272,15 @@ def compute_base_motion(sdk: StreamSDK, audio_path: str) -> tuple[list, int]:
     return sdk.audio2motion.cvt_fmt(res_kp_seq), num_frames
 
 
-def _load_habit_reference(args) -> dict | None:
+def _load_habit_reference(args, pipeline=None) -> dict | None:
     if args.habit_reference is None:
         return None
     if args.habit_reference.lower().endswith(".pkl"):
         return read_pickle(args.habit_reference)
 
-    pipeline = create_motion_template_pipeline(args.crop_scale, args.face_idx)
+    owns_pipeline = pipeline is None
+    if pipeline is None:
+        pipeline = create_motion_template_pipeline(args.crop_scale, args.face_idx)
     try:
         return build_motion_template_base(
             source_path=args.habit_reference,
@@ -236,35 +290,27 @@ def _load_habit_reference(args) -> dict | None:
             pipeline=pipeline,
         )
     finally:
-        release_motion_template_pipeline(pipeline)
+        if owns_pipeline:
+            release_motion_template_pipeline(pipeline)
 
 
-def generate_habit_motion(args, template_data: dict) -> dict:
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    engine = MotionGenerationEngine(
-        motion_checkpoint=args.motion_checkpoint,
-        audio_checkpoint=args.audio_encoder_checkpoint,
-        habit_checkpoint=args.habit_encoder_checkpoint,
-        device=device,
-        sampling_steps=args.sampling_steps,
-        guidance_scale=args.guidance_scale,
+def generate_habit_motion(
+    args,
+    template_data: dict,
+    engine: MotionGenerationEngine,
+    audio_features: np.ndarray,
+    reference_data: dict | None,
+) -> dict:
+    return engine.generate(
+        template_data=template_data,
+        audio_features=audio_features,
+        person_id=args.person_id,
+        reference_data=reference_data,
+        motion_scale=args.motion_scale,
+        smooth=not args.no_smooth,
+        overlap=args.overlap,
+        seed=args.seed,
     )
-    try:
-        return engine.generate(
-            template_data=template_data,
-            audio_path=args.audio_path,
-            person_id=args.person_id,
-            reference_data=_load_habit_reference(args),
-            motion_scale=args.motion_scale,
-            smooth=not args.no_smooth,
-            overlap=args.overlap,
-            seed=args.seed,
-        )
-    finally:
-        del engine
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
 
 
 def replace_lip_expression(base_motion: list, generated_motion: dict) -> list:
@@ -281,7 +327,12 @@ def replace_lip_expression(base_motion: list, generated_motion: dict) -> list:
     return out
 
 
-def configure_generated_lip_motion(sdk: StreamSDK) -> None:
+def configure_generated_lip_motion(
+    sdk: StreamSDK,
+    *,
+    absolute_lip: bool,
+    lip_normalization: np.ndarray | None,
+) -> None:
     base_motion_stitch = sdk.motion_stitch
 
     class GeneratedLipMotion:
@@ -300,7 +351,7 @@ def configure_generated_lip_motion(sdk: StreamSDK) -> None:
                 base.scale_ratio = base.scale_a / base.scale_b
                 base._set_scale_ratio(base.scale_ratio)
 
-            generated_lip_expression = reshape_motion_points(
+            generated_expression = reshape_motion_points(
                 x_d_info["exp"], "exp"
             ).copy()
             if base.relative_d and base.d0 is None:
@@ -354,7 +405,15 @@ def configure_generated_lip_motion(sdk: StreamSDK) -> None:
                 x_d_info = _fix_gaze(base.pose_s, x_d_info)
 
             exp_frame = reshape_motion_points(x_d_info["exp"], "exp")
-            exp_frame[0, LIP_IDX] = generated_lip_expression[0, LIP_IDX]
+            if absolute_lip:
+                exp_frame[0, LIP_IDX] = generated_expression[0, LIP_IDX]
+            elif base.relative_d and base.d0 is not None:
+                source_expression = reshape_motion_points(x_s_info["exp"], "exp")
+                initial_expression = reshape_motion_points(base.d0["exp"], "exp")
+                exp_frame[0, LIP_IDX] = source_expression[0, LIP_IDX] + (
+                    generated_expression[0, LIP_IDX]
+                    - initial_expression[0, LIP_IDX]
+                )
             x_d_info["exp"] = exp_frame.reshape(1, 63).astype(np.float32)
 
             if base.x_s is not None:
@@ -367,6 +426,10 @@ def configure_generated_lip_motion(sdk: StreamSDK) -> None:
             x_d = transform_keypoint(x_d_info)
             if base.flag_stitching:
                 x_d = base.stitch_net(x_s, x_d)
+            if lip_normalization is not None:
+                x_d = x_d.copy()
+                delta = np.asarray(lip_normalization, dtype=np.float32)
+                x_d[:, LIP_IDX, :] += delta[:, LIP_IDX, :]
 
             base.idx += 1
             return x_s, x_d
@@ -380,6 +443,19 @@ def render_frames(sdk: StreamSDK, motion_frames: list) -> None:
         ctrl_kwargs = sdk._get_ctrl_info(gen_frame_idx)
         sdk.motion_stitch_queue.put([frame_idx, x_d_info, ctrl_kwargs])
     sdk.motion_stitch_queue.put(None)
+
+
+def first_rgb_frame(path: str) -> np.ndarray:
+    if not path.lower().endswith(VIDEO_EXTS):
+        return load_image_rgb(path)
+    capture = cv2.VideoCapture(path)
+    try:
+        ok, frame = capture.read()
+    finally:
+        capture.release()
+    if not ok:
+        raise ValueError(f"Unable to read source video: {path}")
+    return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
 
 def mux_audio(tmp_video_path: str, audio_path: str, output_video_path: str) -> None:
@@ -437,6 +513,31 @@ def parse_args():
     parser.add_argument("--overlap", type=int, default=5)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--no-smooth", dest="no_smooth", action="store_true")
+    parser.add_argument(
+        "--pose-mode",
+        choices=("source", "audio"),
+        default=None,
+        help=(
+            "pose source: image defaults to Ditto audio pose and video defaults "
+            "to native source pose; set explicitly to override"
+        ),
+    )
+    parser.add_argument(
+        "--pose-sampling-steps",
+        type=int,
+        default=1,
+        help="Sampling steps used only with --pose-mode audio",
+    )
+    parser.add_argument(
+        "--stage0",
+        action="store_true",
+        help="Generate lip motion relative to the built-in neutral mouth expression",
+    )
+    parser.add_argument(
+        "--neutral",
+        action="store_true",
+        help="Neutralize the source mouth before animation",
+    )
     parser.add_argument("--crop-scale", type=float, default=2.3)
     parser.add_argument("--face-index", dest="face_idx", type=int, default=0)
     parser.add_argument(
@@ -465,6 +566,7 @@ def parse_args():
 
 
 def main():
+    started_at = time.perf_counter()
     args = parse_args()
 
     args.source_path = resolve_input_path(args.source_path, CURRENT_DIR)
@@ -491,58 +593,156 @@ def main():
     ):
         if not os.path.exists(checkpoint):
             raise FileNotFoundError(checkpoint)
+    if not os.path.exists(args.source_path):
+        raise FileNotFoundError(args.source_path)
+    if not os.path.exists(args.audio_path):
+        raise FileNotFoundError(args.audio_path)
+    if args.pose_sampling_steps < 1:
+        raise ValueError("--pose-sampling-steps must be positive")
 
-    sdk = StreamSDK(args.cfg_pkl, args.data_root)
-    sdk.setup(args.source_path, args.output_video, crop_scale=args.crop_scale)
+    source_is_video = args.source_path.lower().endswith(VIDEO_EXTS)
+    if args.pose_mode is None:
+        args.pose_mode = "source" if source_is_video else "audio"
+    relative_lip = bool(args.stage0 or (source_is_video and args.neutral))
+    render_source_path = args.source_path
+    neutral_temporary_dir = None
+    template_pipeline = None
+    lip_normalization = None
+    reference_data = None
+    sdk = None
     render_started = False
     try:
-        print("=" * 60)
-        print("Stage 1: Generate base facial motion")
-        print("=" * 60)
-        base_motion, num_frames = compute_base_motion(sdk, args.audio_path)
+        if relative_lip or args.neutral or (
+            args.habit_reference
+            and not args.habit_reference.lower().endswith(".pkl")
+        ):
+            print("Preparing portrait motion references...")
+            template_pipeline = create_motion_template_pipeline(
+                args.crop_scale,
+                args.face_idx,
+            )
+        reference_data = _load_habit_reference(args, template_pipeline)
+        if args.neutral:
+            print("Neutralizing source mouth...")
+            render_source_path, neutral_temporary_dir = neutralize_source(
+                source_path=args.source_path,
+                pipeline=template_pipeline,
+                face_index=args.face_idx,
+            )
+        if relative_lip:
+            lip_normalization = compute_lip_normalization(
+                first_rgb_frame(render_source_path),
+                template_pipeline,
+                args.face_idx,
+            )
+        pipeline_to_release = template_pipeline
+        template_pipeline = None
+        release_motion_template_pipeline(pipeline_to_release)
+
+        output_fps = (
+            float(video_fps(args.source_path)) if source_is_video else 25.0
+        )
+        sdk = StreamSDK(
+            args.cfg_pkl,
+            args.data_root,
+            enable_audio_motion=args.pose_mode == "audio",
+        )
+        setup_kwargs = {
+            "crop_scale": args.crop_scale,
+            "sampling_timesteps": args.pose_sampling_steps,
+            "relative_d": relative_lip,
+        }
+        if not relative_lip:
+            setup_kwargs["overall_ctrl_info"] = {}
+        sdk.setup(render_source_path, args.output_video, **setup_kwargs)
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        engine = MotionGenerationEngine(
+            motion_checkpoint=args.motion_checkpoint,
+            audio_checkpoint=args.audio_encoder_checkpoint,
+            habit_checkpoint=args.habit_encoder_checkpoint,
+            device=device,
+            sampling_steps=args.sampling_steps,
+            guidance_scale=args.guidance_scale,
+        )
+        print("Extracting audio features...")
+        audio_features = engine.extract_audio_features(args.audio_path)
+        num_frames = len(audio_features)
+
+        if args.pose_mode == "audio":
+            print("Generating auxiliary audio-driven pose...")
+            base_motion, pose_frames = compute_base_motion(sdk, args.audio_path)
+            num_frames = min(num_frames, pose_frames)
+            base_motion = base_motion[:num_frames]
+        else:
+            base_motion = source_motion_frames(sdk.source_info, num_frames)
 
         sdk.setup_Nd(N_d=num_frames, fade_in=-1, fade_out=-1, ctrl_info={})
-
-        print("=" * 60)
-        print("Stage 2: Build the motion template")
-        print("=" * 60)
-        output_fps = float(video_fps(args.source_path)) if args.source_path.lower().endswith(VIDEO_EXTS) else 25.0
-        shell_template_base = build_motion_template_base(
-            source_path=args.source_path,
-            crop_scale=args.crop_scale,
-            face_idx=args.face_idx,
-            output_fps=output_fps,
+        source_template = motion_template_from_source_info(
+            sdk.source_info,
+            output_fps,
         )
-        motion_template = finalize_motion_template(shell_template_base, num_frames, output_fps)
-        template_data = combine_base_motion(motion_template, base_motion)
-        template_data["output_fps"] = output_fps
+        if relative_lip:
+            source_template = apply_neutral_lip_expression(source_template)
+        motion_template = finalize_motion_template(
+            source_template,
+            num_frames,
+            output_fps,
+        )
+        template_data = (
+            combine_base_motion(motion_template, base_motion)
+            if args.pose_mode == "audio"
+            else motion_template
+        )
 
-        print("=" * 60)
-        print("Stage 3: Generate one-step habit-aware lip motion")
-        print("=" * 60)
-        generated_motion = generate_habit_motion(args, template_data)
+        print("Generating one-step habit-aware lip motion...")
+        generated_motion = generate_habit_motion(
+            args,
+            template_data,
+            engine,
+            audio_features[:num_frames],
+            reference_data,
+        )
+        del engine
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
-        print("=" * 60)
-        print("Stage 4: Render the generated motion")
-        print("=" * 60)
         final_motion = replace_lip_expression(base_motion, generated_motion)
-
-        configure_generated_lip_motion(sdk)
+        configure_generated_lip_motion(
+            sdk,
+            absolute_lip=not relative_lip,
+            lip_normalization=lip_normalization if relative_lip else None,
+        )
+        print("Rendering frames...")
+        render_started_at = time.perf_counter()
         render_started = True
         render_frames(sdk, final_motion)
         sdk.close()
+        render_seconds = time.perf_counter() - render_started_at
 
         mux_audio(sdk.tmp_output_path, args.audio_path, args.output_video)
+        total_seconds = time.perf_counter() - started_at
         print(f"Final video saved to: {args.output_video}")
+        print(
+            f"Performance: render={num_frames / max(render_seconds, 1e-6):.2f} FPS, "
+            f"end-to-end={num_frames / max(total_seconds, 1e-6):.2f} FPS"
+        )
     finally:
-        if not render_started:
+        if template_pipeline is not None:
+            pipeline_to_release = template_pipeline
+            template_pipeline = None
+            release_motion_template_pipeline(pipeline_to_release)
+        if sdk is not None and not render_started:
             try:
                 sdk.motion_stitch_queue.put(None)
                 sdk.close()
             except Exception:
                 pass
-        if os.path.exists(sdk.tmp_output_path):
+        if sdk is not None and os.path.exists(sdk.tmp_output_path):
             os.remove(sdk.tmp_output_path)
+        if neutral_temporary_dir is not None:
+            shutil.rmtree(neutral_temporary_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

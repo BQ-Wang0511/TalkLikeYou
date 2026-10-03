@@ -20,8 +20,9 @@ class Decoder:
             self.model.infer()
             pred = self.model.buffer["output"][0].copy()
         elif self.model_type == 'pytorch':
-            with torch.no_grad(), torch.autocast(device_type=self.device[:4], dtype=torch.float16, enabled=True):
-                pred = self.model(torch.from_numpy(feature).to(self.device)).float().cpu().numpy()
+            tensor = feature if torch.is_tensor(feature) else torch.from_numpy(feature).to(self.device)
+            with torch.inference_mode(), torch.autocast(device_type=self.device[:4], dtype=torch.float16, enabled=True):
+                pred = self.model(tensor).float().cpu().numpy()
         else:
             raise ValueError(f"Unsupported model type: {self.model_type}")
         

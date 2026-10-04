@@ -8,11 +8,13 @@ MAIS, Institute of Automation, Chinese Academy of Sciences; University of Chines
 
 [![Project Page](https://img.shields.io/badge/Project-Page-2ea44f?logo=googlechrome&logoColor=white)](https://bq-wang0511.github.io/TalkLikeYou/)
 [![Hugging Face](https://img.shields.io/badge/Hugging%20Face-Checkpoints-FFD21E?logo=huggingface&logoColor=black)](https://huggingface.co/doubi-killer/TalkLikeYou)
-[![Streaming RealTime Demo](https://img.shields.io/badge/Streaming-RealTime%20Demo-2ea44f)](https://github.com/BQ-Wang0511/TalkLikeYou-Streaming-RealTime-Demo)
+[![Streaming RealTime Demo](https://img.shields.io/badge/Streaming-RealTime%20Demo-8b5cf6)](https://github.com/BQ-Wang0511/TalkLikeYou-Streaming-RealTime-Demo)
 
 ## Introduction
 
 TalkLikeYou imitates a target person's speaking habits for real-time audio-driven talking-head generation. It uses a one-step Flow Matching Motion Generator in an 18-dimensional lip-motion space and supports either a preset habit ID or a reference video.
+
+The separate [Streaming RealTime Demo](https://github.com/BQ-Wang0511/TalkLikeYou-Streaming-RealTime-Demo) provides a browser interface for live microphone animation, video dubbing, and interactive chat-driven avatars.
 
 <p align="center">
   <img src="assets/teaser.png" alt="TalkLikeYou overview" width="100%">

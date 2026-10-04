@@ -8,7 +8,7 @@ MAIS, Institute of Automation, Chinese Academy of Sciences; University of Chines
 
 [![Project Page](https://img.shields.io/badge/Project-Page-2ea44f?logo=googlechrome&logoColor=white)](https://bq-wang0511.github.io/TalkLikeYou/)
 [![Hugging Face](https://img.shields.io/badge/Hugging%20Face-Checkpoints-FFD21E?logo=huggingface&logoColor=black)](https://huggingface.co/doubi-killer/TalkLikeYou)
-[![Streaming RealTime Demo](https://img.shields.io/badge/Streaming-RealTime%20Demo-2ea44f)](https://github.com/BQ-Wang0511/Streaming-RealTime-Demo)
+[![Streaming RealTime Demo](https://img.shields.io/badge/Streaming-RealTime%20Demo-2ea44f)](https://github.com/BQ-Wang0511/TalkLikeYou-Streaming-RealTime-Demo)
 
 ## Introduction
 
@@ -22,7 +22,7 @@ TalkLikeYou imitates a target person's speaking habits for real-time audio-drive
 
 - [x] Release Inference Code
 - [x] Release Checkpoint
-- [x] Release [Streaming RealTime Demo](https://github.com/BQ-Wang0511/Streaming-RealTime-Demo)
+- [x] Release [Streaming RealTime Demo](https://github.com/BQ-Wang0511/TalkLikeYou-Streaming-RealTime-Demo)
 - [ ] PLAD Evaluation
 
 ## Installation

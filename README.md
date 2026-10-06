@@ -7,6 +7,7 @@ Official implementation of **Talk Like You: Imitating How You Speak in Real-Time
 MAIS, Institute of Automation, Chinese Academy of Sciences; University of Chinese Academy of Sciences; CAIR, HKISI, Chinese Academy of Sciences; Macau University of Science and Technology
 
 [![Project Page](https://img.shields.io/badge/Project-Page-2ea44f?logo=googlechrome&logoColor=white)](https://bq-wang0511.github.io/TalkLikeYou/)
+[![Paper](https://img.shields.io/badge/arXiv-Paper-B31B1B?logo=arxiv&logoColor=white)](https://arxiv.org/abs/2610.06658)
 [![Hugging Face](https://img.shields.io/badge/Hugging%20Face-Checkpoints-FFD21E?logo=huggingface&logoColor=black)](https://huggingface.co/doubi-killer/TalkLikeYou)
 [![Streaming RealTime Demo](https://img.shields.io/badge/Streaming-RealTime%20Demo-8b5cf6)](https://github.com/BQ-Wang0511/TalkLikeYou-Streaming-RealTime-Demo)
 

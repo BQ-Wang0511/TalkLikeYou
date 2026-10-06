@@ -171,3 +171,7 @@ Either automatic choice can be overridden explicitly with `--pose-mode audio` or
 ## License
 
 The TalkLikeYou code is released under the [MIT License](LICENSE). Third-party code and model files remain subject to their original licenses and usage terms; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Contact
+
+For questions, contact [wangbaiqin0511@gmail.com](mailto:wangbaiqin0511@gmail.com).

@@ -154,6 +154,20 @@ CUDA_VISIBLE_DEVICES=0 python -m talklikeyou \
 
 Either automatic choice can be overridden explicitly with `--pose-mode audio` or `--pose-mode source`. Model initialization, face registration, optional neutralization, and audio muxing are one-time preprocessing/postprocessing costs and are not included in steady-state rendering FPS.
 
+## Citation
+
+```bibtex
+@misc{wang2026talklikeyouimitating,
+  title={Talk Like You: Imitating How You Speak in Real-Time Talking Head Generation},
+  author={Baiqin Wang and Zhixing Ding and Jijie Li and Jiankuo Zhao and Zhen Lei and Xiangyu Zhu},
+  year={2026},
+  eprint={2610.06658},
+  archivePrefix={arXiv},
+  primaryClass={cs.CV},
+  url={https://arxiv.org/abs/2610.06658}
+}
+```
+
 ## License
 
 The TalkLikeYou code is released under the [MIT License](LICENSE). Third-party code and model files remain subject to their original licenses and usage terms; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

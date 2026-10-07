@@ -17,6 +17,8 @@ TalkLikeYou imitates a target person's speaking habits for real-time audio-drive
 
 The separate [Streaming RealTime Demo](https://github.com/BQ-Wang0511/TalkLikeYou-Streaming-RealTime-Demo) provides a browser interface for live microphone animation, video dubbing, and interactive chat-driven avatars.
 
+**On an NVIDIA RTX 3090, the demo achieves 30+ FPS generation throughput while using less than 4 GB of GPU memory, with high-clarity facial details.**
+
 <p align="center">
   <img src="assets/teaser.png" alt="TalkLikeYou overview" width="100%">
 </p>
